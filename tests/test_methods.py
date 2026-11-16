@@ -8,7 +8,7 @@ import pandas as pd
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from src.mle import all_thresholds
-from src.rfm import estimate_mc
+from src.rfm import bootstrap_ci,estimate_mc
 from src.statistics import chow_fixed,holm_adjust,supf_wild_block
 
 
@@ -28,6 +28,17 @@ class TestPaperResults(unittest.TestCase):
         self.assertAlmostEqual(result['mc'],5.22708,places=4)
         self.assertAlmostEqual(result['b'],1.51244548,places=4)
 
+    def test_rfm_bootstrap_ci(self):
+        """Бутстреп-интервалы RFM согласуются с архивными (1965, 1970, 1987, 2011)."""
+        archive=pd.read_csv(ROOT/'data/rfm_доверительные_интервалы.csv').set_index('year')
+        for year in (1965,1970,1987,2011):
+            mag=self.catalog.loc[(self.catalog.year==year)&(self.catalog.magnitude>=3.5),
+                                 'magnitude'].to_numpy()
+            ci=bootstrap_ci(mag,estimate_mc(mag)['mc'],seed=20261025+year)
+            self.assertLess(abs(ci['ci_low']-archive.loc[year,'ci_low']),0.03)
+            self.assertLess(abs(ci['ci_high']-archive.loc[year,'ci_high']),0.03)
+            self.assertLessEqual(ci['ci_high'],2.0)
+
     def test_mle_three_thresholds(self):
         """Три строки таблицы 1 должны воспроизводиться численно."""
         yearly=all_thresholds(self.catalog)
@@ -45,7 +56,10 @@ class TestPaperResults(unittest.TestCase):
         """Неизвестная дата и p должны совпадать с результатом статьи."""
         # Берём рассчитанный с полной точностью ряд: таблица интервалов
         # из исходного архива содержит округлённые значения b.
-        original=pd.read_csv(ROOT/'results/rfm_годовые_оценки.csv')
+        # Ряд b — из результатов, интервалы — архивные (как в статье),
+        # чтобы тест не зависел от запуска run.py --recompute-ci.
+        original=pd.read_csv(ROOT/'results/rfm_годовые_оценки.csv')[['year','b']].merge(
+            pd.read_csv(ROOT/'data/rfm_доверительные_интервалы.csv')[['year','ci_low','ci_high']],on='year')
         se=(original.ci_high-original.ci_low)/(2*1.96)
         result=supf_wild_block(original.year,original.b,se)
         self.assertEqual(result['break_year'],1994)
@@ -55,7 +69,10 @@ class TestPaperResults(unittest.TestCase):
 
     def test_supf_fixed_blocks_legacy(self):
         """Прежняя схема с фиксированными блоками воспроизводит p = 0.0485."""
-        original=pd.read_csv(ROOT/'results/rfm_годовые_оценки.csv')
+        # Ряд b — из результатов, интервалы — архивные (как в статье),
+        # чтобы тест не зависел от запуска run.py --recompute-ci.
+        original=pd.read_csv(ROOT/'results/rfm_годовые_оценки.csv')[['year','b']].merge(
+            pd.read_csv(ROOT/'data/rfm_доверительные_интервалы.csv')[['year','ci_low','ci_high']],on='year')
         se=(original.ci_high-original.ci_low)/(2*1.96)
         result=supf_wild_block(original.year,original.b,se,n_boot=1999,
                                block_scheme='fixed')
