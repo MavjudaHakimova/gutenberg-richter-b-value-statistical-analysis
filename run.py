@@ -49,7 +49,8 @@ def _write_report(rfm, mle, supf, chow):
         '',
         f'- Год максимума: **{supf["break_year"]}**.',
         f'- F-статистика: **{supf["max_f"]:.4f}**.',
-        f'- Бутстреп p: **{supf["p"]:.4f}** ({supf["n_boot"]} реплик).',
+        f'- Бутстреп p: **{supf["p"]:.4f}** ± {supf["mc_halfwidth"]:.4f} (95% интервал Монте-Карло; {supf["n_boot"]} реплик).',
+        f'- Схема блоков: случайное разбиение, средняя длина блока {supf["block_years"]} года; веса 1/max(se, 0.05)².',
         f'- Критическое значение (95%): **{supf["critical"]:.4f}**.',
         f'- Разность BIC (нулевая минус альтернативная модель): **{supf["delta_bic"]:+.4f}**.',
         '',
@@ -71,12 +72,17 @@ def _write_report(rfm, mle, supf, chow):
         '',
         'Доверительные интервалы RFM использованы из сохранённых результатов исходного эксперимента,',
         'а не получены повторным полным бутстрепом при этом запуске.',
+        '',
+        'Чувствительность p к длине блока, положению границ блоков и весам: python supf_sensitivity.py',
+        '(результат в results/supf_чувствительность.md).',
     ]
     (RESULTS/'ИТОГИ_АНАЛИЗА.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
     with (RESULTS/'статистические_тесты.json').open('w',encoding='utf-8') as fh:
         serial={
             'rfm_supf':{key:float(supf[key]) if isinstance(supf[key],(int,float,np.floating)) else supf[key]
-                        for key in ('max_f','p','critical','delta_bic')},
+                        for key in ('max_f','p','critical','delta_bic','mc_halfwidth')},
+            'rfm_supf_settings':{'block_scheme':supf['block_scheme'],'block_years':supf['block_years'],
+                                 'weighted':supf['weighted']},
             'rfm_break_year':int(supf['break_year']),
             'n_boot':int(supf['n_boot']),
             'mle_chow':{str(key):{k:float(v) for k,v in val.items()
@@ -89,8 +95,8 @@ def _write_report(rfm, mle, supf, chow):
 def main():
     parser=argparse.ArgumentParser(description='Воссоздать все 11 рисунков статьи')
     parser.add_argument('--quick',action='store_true',help='Использовать ранее посчитанные RFM/MLE-таблицы')
-    parser.add_argument('--n-boot',type=int,default=1999,
-                        help='Число бутстреп-повторов для supF (по умолчанию 1999)')
+    parser.add_argument('--n-boot',type=int,default=19999,
+                        help='Число бутстреп-повторов для supF (по умолчанию 19999)')
     args=parser.parse_args()
     if args.n_boot < 99:
         parser.error('Для supF необходимо не менее 99 бутстреп-повторов')

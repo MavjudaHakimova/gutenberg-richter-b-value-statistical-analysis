@@ -47,9 +47,18 @@ class TestPaperResults(unittest.TestCase):
         # из исходного архива содержит округлённые значения b.
         original=pd.read_csv(ROOT/'results/rfm_годовые_оценки.csv')
         se=(original.ci_high-original.ci_low)/(2*1.96)
-        result=supf_wild_block(original.year,original.b,se,n_boot=1999)
+        result=supf_wild_block(original.year,original.b,se)
         self.assertEqual(result['break_year'],1994)
         self.assertAlmostEqual(result['max_f'],6.8992,places=3)
+        self.assertAlmostEqual(result['p'],0.04605,places=5)
+        self.assertAlmostEqual(result['critical'],6.789,places=2)
+
+    def test_supf_fixed_blocks_legacy(self):
+        """Прежняя схема с фиксированными блоками воспроизводит p = 0.0485."""
+        original=pd.read_csv(ROOT/'results/rfm_годовые_оценки.csv')
+        se=(original.ci_high-original.ci_low)/(2*1.96)
+        result=supf_wild_block(original.year,original.b,se,n_boot=1999,
+                               block_scheme='fixed')
         self.assertAlmostEqual(result['p'],0.0485,places=4)
 
     def test_holm_multiple_comparisons(self):
