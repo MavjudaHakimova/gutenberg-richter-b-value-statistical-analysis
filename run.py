@@ -9,7 +9,7 @@ import pandas as pd
 
 from src.config import (DATA, FIGURES, RESULTS, ISC_CATALOG, START_YEAR,
                         END_YEAR, prepare_style)
-from src.rfm import annual_rfm
+from src.rfm import annual_rfm, annual_bootstrap_ci
 from src.mle import all_thresholds
 from src.statistics import chow_fixed, supf_wild_block
 
@@ -49,7 +49,8 @@ def _write_report(rfm, mle, supf, chow):
         '',
         f'- Год максимума: **{supf["break_year"]}**.',
         f'- F-статистика: **{supf["max_f"]:.4f}**.',
-        f'- Бутстреп p: **{supf["p"]:.4f}** ({supf["n_boot"]} реплик).',
+        f'- Бутстреп p: **{supf["p"]:.4f}** ± {supf["mc_halfwidth"]:.4f} (95% интервал Монте-Карло; {supf["n_boot"]} реплик).',
+        f'- Схема блоков: случайное разбиение, средняя длина блока {supf["block_years"]} года; веса 1/max(se, 0.05)².',
         f'- Критическое значение (95%): **{supf["critical"]:.4f}**.',
         f'- Разность BIC (нулевая минус альтернативная модель): **{supf["delta_bic"]:+.4f}**.',
         '',
@@ -71,12 +72,17 @@ def _write_report(rfm, mle, supf, chow):
         '',
         'Доверительные интервалы RFM использованы из сохранённых результатов исходного эксперимента,',
         'а не получены повторным полным бутстрепом при этом запуске.',
+        '',
+        'Чувствительность p к длине блока, положению границ блоков и весам: python supf_sensitivity.py',
+        '(результат в results/supf_чувствительность.md).',
     ]
     (RESULTS/'ИТОГИ_АНАЛИЗА.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
     with (RESULTS/'статистические_тесты.json').open('w',encoding='utf-8') as fh:
         serial={
             'rfm_supf':{key:float(supf[key]) if isinstance(supf[key],(int,float,np.floating)) else supf[key]
-                        for key in ('max_f','p','critical','delta_bic')},
+                        for key in ('max_f','p','critical','delta_bic','mc_halfwidth')},
+            'rfm_supf_settings':{'block_scheme':supf['block_scheme'],'block_years':supf['block_years'],
+                                 'weighted':supf['weighted']},
             'rfm_break_year':int(supf['break_year']),
             'n_boot':int(supf['n_boot']),
             'mle_chow':{str(key):{k:float(v) for k,v in val.items()
@@ -89,8 +95,10 @@ def _write_report(rfm, mle, supf, chow):
 def main():
     parser=argparse.ArgumentParser(description='Воссоздать все 11 рисунков статьи')
     parser.add_argument('--quick',action='store_true',help='Использовать ранее посчитанные RFM/MLE-таблицы')
-    parser.add_argument('--n-boot',type=int,default=1999,
-                        help='Число бутстреп-повторов для supF (по умолчанию 1999)')
+    parser.add_argument('--recompute-ci',action='store_true',
+                        help='Пересчитать бутстреп-интервалы RFM вместо архивных (около 3 мин)')
+    parser.add_argument('--n-boot',type=int,default=19999,
+                        help='Число бутстреп-повторов для supF (по умолчанию 19999)')
     args=parser.parse_args()
     if args.n_boot < 99:
         parser.error('Для supF необходимо не менее 99 бутстреп-повторов')
@@ -107,13 +115,24 @@ def main():
     else:
         rfm=annual_rfm(isc_catalog)
         mle=all_thresholds(isc_catalog)
-        # Сохраняем авторские интервалы, поскольку отдельный повтор 1000
-        # бутстреп-реплик по 57 годам был бы излишне долгим.
         published=pd.read_csv(DATA/'rfm_доверительные_интервалы.csv')
         diff=rfm.set_index('year')['b'].sub(published.set_index('year')['b']).abs().max()
         if diff > 0.005:
             warnings.warn(f'Ряд RFM отличается от архивного: max |Δb| = {diff:.4f}')
-        rfm=rfm.merge(published[['year','ci_low','ci_high']],on='year',validate='1:1')
+        if args.recompute_ci:
+            # Пересчёт интервалов: 1000 реплик на год, фиксированный seed.
+            print('       Пересчёт бутстреп-интервалов RFM (1000 реплик на год)...')
+            ci=annual_bootstrap_ci(isc_catalog,rfm)
+            ci.to_csv(RESULTS/'rfm_доверительные_интервалы_пересчёт.csv',index=False,float_format='%.10g')
+            cmp=ci.set_index('year')[['ci_low','ci_high']].sub(
+                published.set_index('year')[['ci_low','ci_high']]).abs()
+            bad=list(cmp.index[(cmp>0.05).any(axis=1)])
+            print(f'       Медианное расхождение с архивом: {cmp.stack().median():.4f}; '
+                  f'годы с расхождением > 0.05: {bad if bad else "нет"}')
+            rfm=rfm.merge(ci[['year','ci_low','ci_high']],on='year',validate='1:1')
+        else:
+            # По умолчанию используются интервалы из статьи (архивный файл).
+            rfm=rfm.merge(published[['year','ci_low','ci_high']],on='year',validate='1:1')
         rfm.to_csv(rfm_path,index=False,float_format='%.10g')
         mle.to_csv(mle_path,index=False,float_format='%.10g')
     neic=pd.read_csv(DATA/'bpositive_neic_итоги.csv')

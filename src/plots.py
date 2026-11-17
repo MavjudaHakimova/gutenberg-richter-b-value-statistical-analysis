@@ -94,7 +94,7 @@ def fig05_supf(supf):
     ax.scatter([supf['break_year']],[supf['max_f']],color=RED,s=65,zorder=8,
                label=f'Максимум F = {supf["max_f"]:.2f} в {supf["break_year"]} г.')
     ax.set(xlabel='Предполагаемый год разрыва',ylabel='F-статистика Чоу')
-    ax.text(.02,.96,f'Бутстреп-калибровка: p = {supf["p"]:.4f}',
+    ax.text(.02,.86,f'Бутстреп-калибровка: p = {supf["p"]:.4f}',
             transform=ax.transAxes,va='top',fontsize=10,color=GRAY)
     ax.legend(loc='upper right',fontsize=9)
     _finish(fig,'05_тест_supf.png',

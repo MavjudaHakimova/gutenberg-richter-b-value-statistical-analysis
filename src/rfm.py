@@ -1,8 +1,9 @@
 """Годовой робастный метод подгонки (RFM) и поиск магнитуды полноты Mc.
 
 Реализованы основные расчётные шаги.
-Годовые доверительные интервалы берутся из сохранённого результата статьи:
-их пересчёт отдельным бутстрепом при каждом запуске не требуется.
+По умолчанию годовые доверительные интервалы берутся из сохранённого
+результата статьи; функция bootstrap_ci пересчитывает их той же процедурой
+(запуск: python run.py --recompute-ci).
 """
 from __future__ import annotations
 
@@ -11,14 +12,19 @@ import pandas as pd
 from .config import START_YEAR, END_YEAR
 
 
-def cumulative_bins(magnitudes: np.ndarray, step: float = 0.1):
-    """Кумулятивное число землетрясений в магнитудных корзинах."""
+def cumulative_bins(magnitudes: np.ndarray, step: float = 0.1, pad: float = 0.0):
+    """Кумулятивное число землетрясений в магнитудных корзинах.
+
+    pad расширяет верхнюю границу сетки: m_max = max + pad. В исходном коде
+    точечная оценка строит сетку с m_max = max (крайнее правое событие может
+    не попасть в корзины), а бутстреп — с m_max = max + step/2.
+    """
     mags = np.asarray(magnitudes, dtype=float)
     mags = mags[np.isfinite(mags)]
     if mags.size < 5:
         return np.array([]), np.array([])
     m_min = float(mags.min())
-    m_max = float(mags.max())
+    m_max = float(mags.max()) + pad
     # Та же схема округления границ корзин, что использована в исходном коде.
     bins = np.round(np.arange(m_min, m_max + step, step), 2)
     # Исходный код применял np.digitize: значения на крайней правой
@@ -106,6 +112,61 @@ def estimate_mc(magnitudes: np.ndarray, min_mc: float = 3.5):
     tail = centers >= mc
     b, a = robust_fit(centers[tail], observed[tail])
     return {'mc': mc, 'b': b, 'a': a, 'r': float(vals[best])}
+
+
+def _bootstrap_b(tail: np.ndarray, b_range=(0.5, 2.0)) -> float:
+    """Оценка b для одной бутстреп-реплики хвоста (как в исходном коде авторов).
+
+    Корзины строятся по самой реплике (от её минимальной магнитуды), Mc не
+    пересчитывается; оценки вне b_range считаются недопустимыми.
+    """
+    if len(tail) < 15:
+        return np.nan
+    # Как в исходном коде авторов: сетка до max + step/2, поэтому
+    # максимальное событие реплики всегда попадает в корзины.
+    centers, observed = cumulative_bins(tail, pad=0.05)
+    b, _ = robust_fit(centers, observed)
+    if not np.isfinite(b) or not (b_range[0] <= b <= b_range[1]):
+        return np.nan
+    return float(b)
+
+
+def bootstrap_ci(magnitudes: np.ndarray, mc: float, *, n_resamples: int = 1000,
+                 seed: int = 20261025, level: float = 0.95,
+                 b_range=(0.5, 2.0)) -> dict:
+    """Перцентильный бутстреп-интервал для b при фиксированном Mc.
+
+    События с M ≥ Mc пересэмплируются с возвращением; для каждой реплики b
+    оценивается RFM; реплики с b вне b_range отбрасываются; границы
+    интервала — перцентили (1 ± level)/2 оставшихся оценок.
+    """
+    tail = np.asarray(magnitudes, float)
+    tail = tail[tail >= mc]
+    if len(tail) < 20:
+        return {'ci_low': np.nan, 'ci_high': np.nan, 'n_valid': 0, 'n_tail': len(tail)}
+    rng = np.random.default_rng(seed)
+    values = np.array([_bootstrap_b(rng.choice(tail, size=len(tail), replace=True), b_range)
+                       for _ in range(n_resamples)])
+    values = values[np.isfinite(values)]
+    if len(values) == 0:
+        return {'ci_low': np.nan, 'ci_high': np.nan, 'n_valid': 0, 'n_tail': len(tail)}
+    q = 100 * (1 - level) / 2
+    low, high = np.percentile(values, [q, 100 - q])
+    return {'ci_low': float(low), 'ci_high': float(high),
+            'n_valid': int(len(values)), 'n_tail': int(len(tail))}
+
+
+def annual_bootstrap_ci(catalog: pd.DataFrame, rfm: pd.DataFrame, *,
+                        n_resamples: int = 1000, seed: int = 20261025) -> pd.DataFrame:
+    """Годовые бутстреп-интервалы b; для года t используется seed + t."""
+    rows = []
+    for year, mc in zip(rfm['year'], rfm['mc']):
+        magnitudes = catalog.loc[(catalog['year'] == year) &
+                                 (catalog['magnitude'] >= 3.5), 'magnitude'].to_numpy()
+        rows.append({'year': int(year),
+                     **bootstrap_ci(magnitudes, mc, n_resamples=n_resamples,
+                                    seed=seed + int(year))})
+    return pd.DataFrame(rows)
 
 
 def annual_rfm(catalog: pd.DataFrame) -> pd.DataFrame:

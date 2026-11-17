@@ -30,14 +30,32 @@ def chow_fixed(years, values, break_year: int = 1994) -> dict:
             'fit_two': fitted1, 'years': t}
 
 
-def supf_wild_block(years, values, se=None, *, n_boot: int = 1999,
+def supf_wild_block(years, values, se=None, *, n_boot: int = 19999,
                     block_years: int = 3, seed: int = 20261025,
-                    trimming: float = 0.15, weighted: bool = True) -> dict:
+                    trimming: float = 0.15, weighted: bool = True,
+                    block_scheme: str = 'random', offset: int = 0) -> dict:
     """Значимость неизвестной даты: supF и знаковый бутстреп блоками лет.
 
     В отличие от обычного теста Чоу, бутстреп учитывает перебор кандидатов
     и использует то же правило максимизации для каждой псевдовыборки.
+
+    Остатки нулевой модели умножаются на случайный знак ±1, общий для
+    всех лет одного блока.
+
+    block_scheme='random' (основная схема статьи): разбиение на блоки
+        генерируется заново в каждой псевдовыборке; каждый год с
+        вероятностью 1/block_years начинает новый блок, поэтому длины
+        блоков имеют геометрическое распределение со средним block_years
+        (по аналогии со стационарным бутстрепом Politis & Romano, 1994).
+        Результат не зависит от положения границ блоков.
+    block_scheme='fixed': фиксированные блоки длины block_years, начиная
+        с первого года ряда со сдвигом offset лет (прежняя схема; оставлена
+        для воспроизведения ранних результатов и анализа чувствительности).
     """
+    if block_scheme not in ('random', 'fixed'):
+        raise ValueError("block_scheme должен быть 'random' или 'fixed'")
+    if block_years < 1:
+        raise ValueError('block_years должен быть не меньше 1')
     years = np.asarray(years, dtype=float)
     y = np.asarray(values, dtype=float)
     if se is None:
@@ -85,11 +103,23 @@ def supf_wild_block(years, values, se=None, *, n_boot: int = 1999,
     obs, rss0, rss1 = fvalues(weighted_y)
     f_curve = obs[0]
     best = int(np.argmax(f_curve))
-    nblock = ((years-years.min())//block_years).astype(int)
     rng = np.random.default_rng(seed)
-    signs = rng.choice([-1.0,1.0], size=(n_boot,int(nblock.max())+1))
-    sims = fit0[None,:]+residual[None,:]*signs[:,nblock]
-    maxima = np.max(fvalues(sims)[0],axis=1)
+    if block_scheme == 'fixed':
+        nblock = ((years-years.min()+offset)//block_years).astype(int)
+        signs = rng.choice([-1.0,1.0], size=(n_boot,int(nblock.max())+1))
+        multipliers = signs[:, nblock]
+    else:
+        multipliers = np.empty((n_boot, n))
+        for k in range(n_boot):
+            starts = rng.random(n) < 1.0/block_years
+            starts[0] = True
+            block_id = np.cumsum(starts) - 1
+            block_sign = rng.choice([-1.0,1.0], size=int(block_id[-1])+1)
+            multipliers[k] = block_sign[block_id]
+    sims = fit0[None,:]+residual[None,:]*multipliers
+    # Расчёт порциями, чтобы не держать в памяти массив n_boot × даты × n.
+    maxima = np.concatenate([np.max(fvalues(sims[i:i+2000])[0], axis=1)
+                             for i in range(0, n_boot, 2000)])
     max_f = float(f_curve[best])
     p = (1+int(np.count_nonzero(maxima>=max_f)))/(1+n_boot)
     critical = float(np.quantile(maxima,0.95))
@@ -99,7 +129,9 @@ def supf_wild_block(years, values, se=None, *, n_boot: int = 1999,
             'breaks':breaks.astype(int), 'f_curve':f_curve,
             'delta_bic':float(n*np.log(rss0[0]/rss1[0,best])-2*np.log(n)),
             'coefs':c1, 'mean_year':float(years.mean()),
-            'n_boot':int(n_boot)}
+            'n_boot':int(n_boot), 'block_years':int(block_years),
+            'block_scheme':block_scheme, 'weighted':bool(weighted),
+            'mc_halfwidth':float(1.96*np.sqrt(p*(1-p)/n_boot))}
 
 
 def holm_adjust(p_values):
