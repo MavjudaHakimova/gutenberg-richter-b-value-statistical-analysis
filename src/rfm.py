@@ -114,7 +114,7 @@ def estimate_mc(magnitudes: np.ndarray, min_mc: float = 3.5):
     return {'mc': mc, 'b': b, 'a': a, 'r': float(vals[best])}
 
 
-def _bootstrap_b(tail: np.ndarray, b_range=(0.5, 2.0)) -> float:
+def _bootstrap_b(tail: np.ndarray, b_range=None) -> float:
     """Оценка b для одной бутстреп-реплики хвоста (как в исходном коде авторов).
 
     Корзины строятся по самой реплике (от её минимальной магнитуды), Mc не
@@ -126,14 +126,14 @@ def _bootstrap_b(tail: np.ndarray, b_range=(0.5, 2.0)) -> float:
     # максимальное событие реплики всегда попадает в корзины.
     centers, observed = cumulative_bins(tail, pad=0.05)
     b, _ = robust_fit(centers, observed)
-    if not np.isfinite(b) or not (b_range[0] <= b <= b_range[1]):
+    if not np.isfinite(b) or (b_range is not None and not (b_range[0] <= b <= b_range[1])):
         return np.nan
     return float(b)
 
 
 def bootstrap_ci(magnitudes: np.ndarray, mc: float, *, n_resamples: int = 1000,
                  seed: int = 20261025, level: float = 0.95,
-                 b_range=(0.5, 2.0)) -> dict:
+                 b_range=None) -> dict:
     """Перцентильный бутстреп-интервал для b при фиксированном Mc.
 
     События с M ≥ Mc пересэмплируются с возвращением; для каждой реплики b
