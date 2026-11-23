@@ -1,0 +1,18 @@
+{
+  "source_path": "results/neic_regions/all_regions_b_values.csv",
+  "source_sha256": "18598ff41702a07000765f0fa9087e830b26b9c6d13790824fa6d4ca1047b4e9",
+  "protocol": "original",
+  "weighted": false,
+  "n_boot": 9999,
+  "block_years": 3,
+  "bootstrap_scheme": "fixed-calendar",
+  "seed": 20261025,
+  "seed_policy": "per-test",
+  "trimming": 0.15,
+  "min_side_years": 5,
+  "alpha": 0.05,
+  "holm_groups": "separately 20 per threshold and jointly 60",
+  "tests": 60,
+  "numpy_version": "2.5.5",
+  "python_version": "3.13.3"
+}
