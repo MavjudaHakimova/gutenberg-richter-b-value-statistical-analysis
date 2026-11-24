@@ -139,7 +139,7 @@ def fig07_neic_weighted(neic):
 
 
 def fig08_isc_bpositive(isc):
-    df=isc.loc[isc.year>=1973].copy()
+    df=isc.sort_values("year").copy()
     fig,axs=plt.subplots(2,1,figsize=(11.8,8.3),layout='constrained',sharex=True)
     fig.suptitle('Рис. 8 · ISC (Mw): сравнение региональных b-positive',fontweight='semibold',fontsize=14)
     for ax,mode,name in zip(axs,('median','weighted'),('Медиана','Взвешенное среднее')):

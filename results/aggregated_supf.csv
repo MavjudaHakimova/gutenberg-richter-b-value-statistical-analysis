@@ -1,0 +1,11 @@
+catalog,threshold,series,weighted_regression,break_year,supF,p,critical_95,n_years
+NEIC,35,median,False,1990,7.609,0.1288,9.974,49
+NEIC,35,weighted,True,1990,4.688,0.4109,10.446,49
+NEIC,40,median,False,2006,32.693,0.0019,16.989,49
+NEIC,40,weighted,True,2006,26.095,0.002,14.683,49
+NEIC,45,median,False,2006,60.225,0.0008,26.76,49
+NEIC,45,weighted,True,2006,43.168,0.0006,19.891,49
+ISC,all,median,False,1980,18.816,0.0754,20.103,58
+ISC,all,weighted,False,1974,27.216,0.051,27.273,58
+ISC,40,median,False,1980,12.974,0.1171,15.117,58
+ISC,40,weighted,False,1980,13.647,0.1744,19.802,58
