@@ -3,13 +3,13 @@
 """NEIC b-positive: воспроизводимые региональные supF (3 порога x 20 регионов).
 
 Запуск из корня репозитория:
-  python scripts/neic_regional_supF_20x3.py \
+  python scripts/NEIC_regional_supF_20x3.py \
       --input results/neic_regions/all_regions_b_values.csv \
       --output results/neic_regions/regional_supf_fixed_unweighted.csv \
       --protocol original
 
 Для сопоставления с основной моделью supF из src/statistics.py:
-  python scripts/neic_regional_supF_20x3.py \
+  python scripts/NEIC_regional_supF_20x3.py \
       --input results/neic_regions/all_regions_b_values.csv \
       --output results/neic_regions/regional_supf_weighted_random.csv \
       --protocol repo-default

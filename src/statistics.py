@@ -121,7 +121,12 @@ def supf_wild_block(years, values, se=None, *, n_boot: int = 19999,
     maxima = np.concatenate([np.max(fvalues(sims[i:i+2000])[0], axis=1)
                              for i in range(0, n_boot, 2000)])
     max_f = float(f_curve[best])
-    p = (1+int(np.count_nonzero(maxima>=max_f)))/(1+n_boot)
+    # Реплики, в которых все блоки получили один знак, воспроизводят
+    # наблюдаемый ряд (или его зеркальную копию) и дают F* = F; из-за
+    # машинного округления F* может оказаться на 1e-15 меньше F. Такие
+    # реплики должны засчитываться, поэтому сравнение идёт с допуском.
+    tol = 1e-10*max(1.0, abs(max_f))
+    p = (1+int(np.count_nonzero(maxima>=max_f-tol)))/(1+n_boot)
     critical = float(np.quantile(maxima,0.95))
     c1 = np.linalg.lstsq(designs[best],weighted_y,rcond=None)[0]
     return {'break_year':int(breaks[best]), 'max_f':max_f,
